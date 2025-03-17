@@ -1,4 +1,4 @@
-// For handling the connection to teh Raspberry Pi
+// For handling the connection to the Raspberry Pi
 
 import Foundation
 import SwiftUI
@@ -17,66 +17,85 @@ class StreamManager: ObservableObject {
         UserDefaults.standard.set(port, forKey: "port")
     }
 
+
     func getStreamURL() -> URL? {
         guard let portInt = Int(port), portInt > 0 && portInt < 65536 else {
             errorMessage = "Invalid port number"
             return nil
         }
-
-        // Validate IP addresses format (basic validation)
+        
+        // Validate IP address format (basic validation)
         let ipComponents = ipAddress.split(separator: ".")
         guard ipComponents.count == 4 else {
             errorMessage = "Invalid IP address format"
             return nil
         }
-
-        let urlString = "http://\(ipAddress):\(port)/stream.mjpg"
+        
+        let urlString = "rtsp://\(ipAddress):\(port)/"
         return URL(string: urlString)
-
     }
 
     func getWebPageURL() -> URL? {
+        // For RTSP there's no web page, but we'll keep this for connection testing
         guard let portInt = Int(port), portInt > 0 && portInt < 65536 else {
             errorMessage = "Invalid port number"
             return nil
         }
-
-        let urlString = "http://\(ipAddress):\(port)/"
+        
+        // We'll test connection on the RTSP port
+        let urlString = "rtsp://\(ipAddress):\(port)/"
         return URL(string: urlString)
     }
 
-    func testConnection() {
-        guard let url = getWebPageURL() else {
+
+        func testConnection() {
+        guard let url = getStreamURL() else {
             isConnected = false
             return
         }
-
+        
         errorMessage = nil
-
-        let task = URLSession.shared.dataTask(with: url) { [weak self] _, response, error in 
-            DispatchQueue.main.async {
-               if let error = error {
-                self?.errorMessage = "Connection error: \(error.localizedDescription)"
-                self?.isConnected = false
-                return
-               }
-
-               guard let httpResponse = response as? HTTPURLResponse else {
-                self?.errorMessage = "Invalid response"
-                self?.isConnected = false
-                return
-               }
-
-               if httpResponse.statusCode == 200 || httpResponse.statusCode == 301 {
-                self?.isConnected = true
-               } else {
-                self?.errorMessage = "Server returned status code: \(httpResponse.statusCode)"
-                self?.isConnected = false
-               }
-
+        
+        // Create a temporary AVPlayer to test connection
+        let asset = AVAsset(url: url)
+        let playerItem = AVPlayerItem(asset: asset)
+        
+        // Observe the status of the player item
+        let statusKeyPath = \AVPlayerItem.status
+        
+        playerItem.addObserver(self, forKeyPath: statusKeyPath, options: [.new], context: nil)
+        
+        // Store the observation in cancellables
+        let cancellable = AnyCancellable {
+            playerItem.removeObserver(self, forKeyPath: statusKeyPath)
+        }
+        cancellables.insert(cancellable)
+        
+        // Set a timeout
+        DispatchQueue.main.asyncAfter(deadline: .now() + 5.0) { [weak self] in
+            if let cancellable = self?.cancellables.first(where: { $0 === cancellable }) {
+                self?.cancellables.remove(cancellable)
+            }
+            
+            if self?.isConnected == false {
+                self?.errorMessage = "Connection timed out"
             }
         }
-        task.resume()
     }
 
+// Override to handle observation
+override func observeValue(forKeyPath keyPath: String?, of object: Any?, change: [NSKeyValueChangeKey : Any]?, context: UnsafeMutableRawPointer?) {
+    if keyPath == "status", let playerItem = object as? AVPlayerItem {
+        DispatchQueue.main.async { [weak self] in
+            switch playerItem.status {
+            case .readyToPlay:
+                self?.isConnected = true
+            case .failed:
+                self?.isConnected = false
+                self?.errorMessage = "Failed to connect to stream"
+            default:
+                break
+            }
+        }
+    }
 }
