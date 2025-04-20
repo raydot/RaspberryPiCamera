@@ -1,3 +1,11 @@
+//
+//  ContentView.swift
+//  Rasberry Pi Camera
+//
+//  Created by Dave Kanter on 3/16/25.
+//
+
+
 // Main view controller
 
 import SwiftUI

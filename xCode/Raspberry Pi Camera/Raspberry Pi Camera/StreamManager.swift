@@ -1,3 +1,10 @@
+//
+//  StreamManager.swift
+//  Rasberry Pi Camera
+//
+//  Created by Dave Kanter on 3/16/25.
+//
+
 // For handling the connection to the Raspberry Pi
 
 import Foundation
@@ -50,42 +57,40 @@ class StreamManager: ObservableObject {
 
 
     func testConnection() {
-        guard let url = getStreamURL() else {
-            isConnected = false
-            return
-        }
-        
-        errorMessage = nil
-        
-        // Create a temporary AVPlayer to test connection
-        let asset = AVURLAsset(url: url)
-        let playerItem = AVPlayerItem(asset: asset)
-        
-        // Observe the status of the player item
-        let statusKeyPath = "status"
-        
-        // Use Combine to observe status changes
-        playerItem.publisher(for: \.status)
-            .sink { [weak self] status in
-                DispatchQueue.main.async {
-                    switch status {
-                    case .readyToPlay:
-                        self?.isConnected = true
-                    case .failed:
-                        self?.isConnected = false
-                        self?.errorMessage = "Failed to connect to stream"
-                    default:
-                        break
+            guard let url = getStreamURL() else {
+                isConnected = false
+                return
+            }
+            
+            errorMessage = nil
+            
+            // Create a temporary AVPlayer to test connection
+            let asset = AVURLAsset(url: url)
+            let playerItem = AVPlayerItem(asset: asset)
+            
+            
+            // Use Combine to observe status changes
+            playerItem.publisher(for: \.status)
+                .sink { [weak self] status in
+                    DispatchQueue.main.async {
+                        switch status {
+                        case .readyToPlay:
+                            self?.isConnected = true
+                        case .failed:
+                            self?.isConnected = false
+                            self?.errorMessage = "Failed to connect to stream"
+                        default:
+                            break
+                        }
                     }
                 }
-            }
-            .store(in: &cancellables)
-        
-        // Set a timeout
-        DispatchQueue.main.asyncAfter(deadline: .now() + 5.0) { [weak self] in
-            if self?.isConnected == false {
-                self?.errorMessage = "Connection timed out"
+                .store(in: &cancellables)
+            
+            // Set a timeout
+            DispatchQueue.main.asyncAfter(deadline: .now() + 5.0) { [weak self] in
+                if self?.isConnected == false {
+                    self?.errorMessage = "Connection timed out"
+                }
             }
         }
     }
-}
